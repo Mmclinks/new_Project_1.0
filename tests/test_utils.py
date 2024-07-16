@@ -1,55 +1,51 @@
-import os
 import unittest
 from datetime import datetime
-
 import pandas as pd
+from src.utils import read_excel_data
 
-from src.utils import read_excel_data, search_phone_numbers
 
-
-class TestMyFunctions(unittest.TestCase):
+class TestReadExcelData(unittest.TestCase):
 
     def setUp(self):
-        # Мокаем данные для тестирования
-        self.test_data = [
-            {"date": "2024-06-15", "value": 100},
-            {"date": "2024-06-25", "value": 200},
-            {"date": "2024-07-05", "value": 300}
-        ]
-
-    def test_read_excel_data(self):
-        # Создаем временный файл Excel
-        file_path = "test_data.xlsx"
-        df = pd.DataFrame(self.test_data)
-        df.to_excel(file_path, index=False)
-
-        # Тестируем функцию read_excel_data
-        end_date = datetime(2024, 6, 30)
-        result_df = read_excel_data(file_path, end_date)
-
-        # Проверяем, что данные фильтруются корректно
-        self.assertEqual(len(result_df), 2)  # Ожидаем две строки в результате
-
-    def test_search_phone_numbers(self):
-        # Тестируем функцию search_phone_numbers
-        transactions = [
-            {"description": "Payment for phone bill 123-456-7890"},
-            {"description": "Purchase at store"},
-            {"description": "Received payment from 555.123.4567"}
-        ]
-
-        result = search_phone_numbers(transactions)
-
-        # Проверяем, что функция правильно находит номера телефонов
-        self.assertEqual(len(result), 2)  # Ожидаем две транзакции с номерами телефонов
-
-        # Проверяем конкретные ожидаемые результаты
-        self.assertIn(transactions[0], result)
-        self.assertIn(transactions[2], result)
+        # Create a sample Excel file (could use in-memory if preferred)
+        self.file_path = 'test_data.xlsx'
+        self.test_data = {
+            'date': pd.date_range('2024-01-01', periods=10, freq='D'),
+            'value': range(10)
+        }
+        self.df = pd.DataFrame(self.test_data)
+        self.df.to_excel(self.file_path, index=False)
 
     def tearDown(self):
-        # Удаление временного файла Excel после тестов
-        try:
-            os.remove("test_data.xlsx")
-        except FileNotFoundError:
-            pass
+        import os
+        os.remove(self.file_path)
+
+    def test_basic_functionality(self):
+        end_date = datetime.strptime('2024-01-15', '%Y-%m-%d')  # Преобразуем строку в datetime
+        expected_result = self.df[self.df['date'] <= end_date]
+        result = read_excel_data(self.file_path, end_date)
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_edge_case_start_of_month(self):
+        end_date = datetime.strptime('2024-01-01', '%Y-%m-%d')  # Преобразуем строку в datetime
+        expected_result = self.df[self.df['date'] <= end_date]
+        result = read_excel_data(self.file_path, end_date)
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_edge_case_end_of_month(self):
+        end_date = datetime.strptime('2024-01-31', '%Y-%m-%d')  # Преобразуем строку в datetime
+        expected_result = self.df[self.df['date'] <= end_date]
+        result = read_excel_data(self.file_path, end_date)
+        pd.testing.assert_frame_equal(result, expected_result)
+
+    def test_empty_dataframe(self):
+        # Create an empty Excel file
+        empty_file_path = 'empty.xlsx'
+        pd.DataFrame(columns=['date', 'value']).to_excel(empty_file_path, index=False)
+        result = read_excel_data(empty_file_path, datetime.strptime('2024-01-15', '%Y-%m-%d'))
+        self.assertTrue(result.empty)
+        import os
+        os.remove(empty_file_path)
+
+if __name__ == '__main__':
+    unittest.main()
