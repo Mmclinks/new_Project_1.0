@@ -1,34 +1,47 @@
+import json
+
 import pytest
-from src.services import get_cashback_categories, get_investment_piggy_bank, simple_search, search_by_phone, \
-    search_transfers_to_individuals
-from src.utils import load_data
+import pandas as pd
+from src.services import find_phone_numbers
 
 
-@pytest.fixture
-def transactions():
-    return load_data('data/operations.xlsx')
+def test_find_phone_numbers():
+    data = {
+        'Дата операции': ['2024-04-01', '2024-05-15', '2024-06-20', '2024-07-05'],
+        'Сумма операции': [200, 150, 300, 400],
+        'Описание': [
+            'Я МТС +7 921 11-22-33',
+            'Тинькофф Мобайл +7 995 555-55-55',
+            'МТС Mobile +7 981 333-44-55',
+            'Покупка в магазине'
+        ]
+    }
+    df = pd.DataFrame(data)
+
+    # Ожидаемый результат
+    expected = [
+        {
+            'Дата операции': '2024-04-01',
+            'Сумма операции': 200,
+            'Описание': 'Я МТС +7 921 11-22-33'
+        },
+        {
+            'Дата операции': '2024-05-15',
+            'Сумма операции': 150,
+            'Описание': 'Тинькофф Мобайл +7 995 555-55-55'
+        },
+        {
+            'Дата операции': '2024-06-20',
+            'Сумма операции': 300,
+            'Описание': 'МТС Mobile +7 981 333-44-55'
+        }
+    ]
+
+    result_json = find_phone_numbers(df)
+    result = json.loads(result_json)
+
+    assert result == expected
 
 
-def test_get_cashback_categories(transactions):
-    cashback = get_cashback_categories(transactions)
-    assert not cashback.empty
-
-
-def test_get_investment_piggy_bank(transactions):
-    piggy_bank = get_investment_piggy_bank(transactions)
-    assert not piggy_bank.empty
-
-
-def test_simple_search(transactions):
-    search_result = simple_search(transactions, 'example_query')
-    assert not search_result.empty
-
-
-def test_search_by_phone(transactions):
-    phone_search = search_by_phone(transactions, '1234567890')
-    assert not phone_search.empty
-
-
-def test_search_transfers_to_individuals(transactions):
-    transfers = search_transfers_to_individuals(transactions)
-    assert not transfers.empty
+if __name__ == '__main__':
+    pytest.main()

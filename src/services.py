@@ -1,81 +1,42 @@
 import pandas as pd
 import json
 import re
-from typing import List, Dict, Any
-from datetime import datetime
 import logging
+from typing import List, Dict
+import requests
+from typing import Dict
+from config import EXCHANGE_API_URL, EXCHANGE_API_KEY
 
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
-def load_data(file_path: str) -> pd.DataFrame:
-    """Загружает данные из Excel-файла."""
-    return pd.read_excel(file_path)
 
-def analyze_cashback_categories(data: pd.DataFrame, year: int, month: int) -> str:
-    """Анализирует выгодность категорий повышенного кешбэка."""
-    filtered_data = data[
-        (pd.to_datetime(data['Дата операции']).dt.year == year) &
-        (pd.to_datetime(data['Дата операции']).dt.month == month)
-    ]
+def find_phone_numbers(transactions: pd.DataFrame) -> str:
+    """
+    Находит все транзакции, содержащие в описании мобильные номера.
 
-    category_cashback = (
-        filtered_data.groupby('Категория')['Сумма операции']
-        .apply(lambda x: (x // 100).sum())
-        .to_dict()
-    )
+    :param transactions: Датафрейм с транзакциями.
+    :return: JSON-строка с транзакциями, содержащими мобильные номера.
+    """
+    try:
+        # Регулярное выражение для поиска мобильных номеров
+        phone_pattern = re.compile(r'\+7\s?\d{3}\s?\d{3}-?\d{2}-?\d{2}')
 
-    logging.info(f"Категории кешбэка за {year}-{month}: {category_cashback}")
+        # Функция для проверки наличия номера в описании
+        contains_phone_number = lambda description: bool(phone_pattern.search(description))
 
-    return json.dumps(category_cashback, ensure_ascii=False)
+        # Фильтруем транзакции, оставляем только те, у которых описание содержит номер
+        filtered_transactions = transactions[transactions['Описание'].apply(contains_phone_number)]
 
-def investment_bank(month: str, transactions: List[Dict[str, Any]], limit: int) -> float:
-    """Возвращает сумму, отложенную в инвесткопилку."""
-    total_investment = 0
+        # Преобразуем в JSON
+        result = filtered_transactions.to_dict(orient='records')
+        json_result = json.dumps(result, ensure_ascii=False, indent=4)
 
-    for transaction in transactions:
-        transaction_date = pd.to_datetime(transaction['Дата операции'])
-        transaction_month = transaction_date.strftime('%Y-%m')
+        # Логируем информацию о выполнении
+        logging.info("Поиск телефонных номеров завершен успешно.")
 
-        if transaction_month == month:
-            amount = transaction['Сумма операции']
-            rounded_amount = (amount + limit - 1) // limit * limit
-            total_investment += rounded_amount - amount
+        return json_result
 
-    logging.info(f"Общая сумма в инвесткопилке за {month}: {total_investment}")
-
-    return total_investment
-
-def simple_search(data: pd.DataFrame, query: str) -> str:
-    """Возвращает все транзакции, содержащие запрос в описании или категории."""
-    result = data[
-        data['Описание'].str.contains(query, case=False, na=False) |
-        data['Категория'].str.contains(query, case=False, na=False)
-    ]
-
-    transactions = result.to_dict(orient='records')
-    logging.info(f"Найдено {len(transactions)} транзакций по запросу '{query}'")
-
-    return json.dumps(transactions, ensure_ascii=False)
-
-def search_phone_numbers(data: pd.DataFrame) -> str:
-    """Возвращает все транзакции, содержащие в описании мобильные номера."""
-    phone_pattern = re.compile(r'\+7 \d{3} \d{2}-\d{2}-\d{2}')
-    result = data[data['Описание'].str.contains(phone_pattern, na=False)]
-
-    transactions = result.to_dict(orient='records')
-    logging.info(f"Найдено {len(transactions)} транзакций с телефонными номерами")
-
-    return json.dumps(transactions, ensure_ascii=False)
-
-def search_personal_transfers(data: pd.DataFrame) -> str:
-    """Возвращает все транзакции, относящиеся к переводам физлицам."""
-    transfer_pattern = re.compile(r'\b[А-Я][а-я]+\s[А-Я]\.\b')
-    result = data[
-        (data['Категория'] == 'Переводы') &
-        data['Описание'].str.contains(transfer_pattern, na=False)
-    ]
-
-    transactions = result.to_dict(orient='records')
-    logging.info(f"Найдено {len(transactions)} переводов физлицам")
-
-    return json.dumps(transactions, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"Ошибка в функции find_phone_numbers: {e}")
+        raise

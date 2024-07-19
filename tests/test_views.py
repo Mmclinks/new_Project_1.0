@@ -1,18 +1,34 @@
-import pandas as pd
+import json
+
 import pytest
-from src.views import get_greeting, get_main_page_data
+import pandas as pd
+from datetime import datetime
+from src.views import generate_json_response
 
 
-def test_get_greeting():
-    assert get_greeting(pd.Timestamp('2023-07-19 06:00:00')) == "Доброе утро"
-    assert get_greeting(pd.Timestamp('2023-07-19 13:00:00')) == "Добрый день"
-    assert get_greeting(pd.Timestamp('2023-07-19 19:00:00')) == "Добрый вечер"
-    assert get_greeting(pd.Timestamp('2023-07-19 23:00:00')) == "Доброй ночи"
+def test_generate_json_response():
+    # Пример данных
+    data = {
+        'Дата операции': ['2024-07-19', '2024-07-20', '2024-07-15'],
+        'Номер карты': [1234567812345678, 8765432187654321, 1234567812345678],
+        'Сумма операции': [1000, 2000, 1500],
+        'Описание': ['Покупка 1', 'Покупка 2', 'Покупка 3']
+    }
+    df = pd.DataFrame(data)
+
+    # Пример вызова функции
+    response = generate_json_response('2024-07-20 12:00:00', df)
+
+    # Проверка наличия ключей в ответе
+    response_data = json.loads(response)
+    assert "greeting" in response_data
+    assert "cards" in response_data
+    assert "top_transactions" in response_data
+    assert "currency_rates" in response_data
+    assert "stock_prices" in response_data
+
+    # Дополнительные проверки можно добавить в зависимости от требуемых данных
 
 
-def test_get_main_page_data():
-    data = get_main_page_data('2023-07-19 14:30:00')
-    assert "greeting" in data
-    assert "cards" in data
-    assert "currency_rates" in data
-    assert "stock_prices" in data
+if __name__ == '__main__':
+    pytest.main()
