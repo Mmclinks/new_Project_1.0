@@ -1,99 +1,101 @@
+import json
+import logging
+from typing import Dict, List, Any
 import pandas as pd
+import requests
+from typing import List, Dict
 from datetime import datetime
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
 
-from src import config
+# Константы
+USER_SETTINGS_FILE = 'user_settings.json'
+CURRENCY_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD'
+STOCK_API_URL = 'https://api.example.com/stock_prices'  # Подставьте реальный URL
 
 
-def read_transactions(
-    start_date: datetime | None = None, end_date: datetime | None = None
-) -> pd.DataFrame:
-    """ Читает список транзакций из xlsx-файла. """
+def get_greeting(current_time: datetime) -> str:
+    """Возвращает приветствие на основе текущего времени."""
+    if 5 <= current_time.hour < 12:
+        return "Доброе утро"
+    elif 12 <= current_time.hour < 18:
+        return "Добрый день"
+    elif 18 <= current_time.hour < 23:
+        return "Добрый вечер"
+    else:
+        return "Доброй ночи"
 
-    df = pd.read_excel(config.EXCEL_FILE_PATH)
 
-    df["Дата операции"] = pd.to_datetime(
-        df["Дата операции"], format="%d.%m.%Y %H:%M:%S"
-    )
-    df["Дата платежа"] = pd.to_datetime(df["Дата платежа"], format="%d.%m.%Y")
 
-    if start_date is not None:
-        df = df[df["Дата операции"] >= start_date]
-    if end_date is not None:
-        df = df[df["Дата операции"] <= end_date]
+def load_user_settings() -> Dict[str, Any]:
+    """Загружает пользовательские настройки из JSON-файла."""
+    with open(USER_SETTINGS_FILE, 'r') as file:
+        return json.load(file)
 
-    return df
 
-# import os
-# from dotenv import load_dotenv
-# from src.utils import read_excel_data, get_currency_rates, get_stock_prices, search_phone_numbers, get_greeting
-# from typing import Optional
-# import pandas as pd
-# from datetime import timedelta, datetime
-# import logging
-#
-# # Инициализация логгера
-# logging.basicConfig(level=logging.INFO)
-# logger = logging.getLogger(__name__)
-#
-# # Загрузка переменных окружения
-# load_dotenv()
-#
-#
-# def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) -> pd.DataFrame:
-#     filtered_transactions = transactions.copy()
-#     filtered_transactions['Date'] = pd.to_datetime(filtered_transactions['Date'])
-#
-#     # Проверка переданной даты или использование текущей даты
-#     if date is None:
-#         date = datetime.now().date()
-#     else:
-#         try:
-#             date = datetime.strptime(date, '%Y-%m-%d').date()
-#         except ValueError as e:
-#             logger.error(f"Invalid date format: {date}. Error: {str(e)}")
-#             return pd.DataFrame()
-#
-#     # Определяем дату начала - три месяца назад от указанной даты
-#     three_months_ago = date - timedelta(days=90)
-#
-#     # Фильтруем транзакции за последние три месяца
-#     filtered_transactions = filtered_transactions[(filtered_transactions['Date'] >= three_months_ago) &
-#                                                   (filtered_transactions['Date'] <= date)]
-#
-#     # Добавляем столбец с днем недели
-#     filtered_transactions['Weekday'] = filtered_transactions['Date'].dt.weekday
-#
-#     # Группируем по дню недели и вычисляем средние траты
-#     average_spending = filtered_transactions.groupby('Weekday')['Amount'].mean()
-#
-#     # Создаем DataFrame с результатами
-#     result_df = pd.DataFrame({
-#         'Weekday': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-#         'Average Spending': average_spending
-#     })
-#
-#     return result_df
-#
-#
-# def generate_homepage_data(date: str) -> dict:
-#     try:
-#         file_path = os.getenv('EXCEL_FILE_PATH')
-#         transactions = read_excel_data(file_path, date)
-#         currency_rates = get_currency_rates(['USD', 'EUR', 'GBP'])  # Пример валют для получения курсов
-#         stock_prices = get_stock_prices(['AAPL', 'GOOGL', 'AMZN'])  # Пример акций для получения цен
-#         transactions_with_phones = search_phone_numbers(transactions)
-#
-#         homepage_data = {
-#             "greeting": get_greeting(datetime.now()),
-#             "currency_rates": currency_rates,
-#             "stock_prices": stock_prices,
-#             "cards": transactions.to_dict(orient='records'),
-#             "top_transactions": transactions.head(5).to_dict(orient='records'),
-#             "transactions_with_phones": transactions_with_phones
-#         }
-#
-#         return homepage_data
-#
-#     except Exception as e:
-#         logger.error(f"Error generating homepage data: {str(e)}")
-#         return {}
+def get_currency_rates(api_url: str, currencies: List[str]) -> List[Dict[str, float]]:
+    """
+    Получает курсы валют из API.
+
+    :param api_url: URL для получения курсов валют
+    :param currencies: Список валют, для которых нужно получить курсы
+    :return: Список словарей с курсами валют
+    """
+    response = requests.get(api_url)
+    data = response.json()
+
+    rates = [
+        {"currency": currency, "rate": data["rates"].get(currency, None)}
+        for currency in currencies
+    ]
+
+    return rates
+
+
+
+
+
+
+
+import requests
+from requests.exceptions import ConnectionError, RequestException
+
+def get_stock_prices(api_url, stocks):
+    try:
+        response = requests.get(api_url, params={'symbol': stocks})
+        response.raise_for_status()  # Вызовет ошибку для некорректных ответов
+        return response.json()  # Предполагается, что ответ в формате JSON
+    except ConnectionError as ce:
+        print(f"Ошибка подключения к {api_url}: {ce}")
+    except RequestException as re:
+        print(f"Ошибка запроса: {re}")
+    except Exception as e:
+        print(f"Непредвиденная ошибка: {e}")
+
+    return None  # Или обработать адекватно в вашем приложении
+
+# Пример использования
+api_url = 'https://www.alphavantage.co/query'
+stocks = 'AAPL'  # Пример символа акции
+data = get_stock_prices(api_url, stocks)
+if data:
+    print(data)
+else:
+    print("Не удалось получить цены на акции.")
+
+
+def get_top_transactions(transactions: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Возвращает топ-5 транзакций по сумме платежа."""
+    top_transactions = transactions.nlargest(5, 'Сумма операции')
+    return top_transactions.to_dict(orient='records')
+
+
+def analyze_expenses(transactions: pd.DataFrame) -> Dict[str, Any]:
+    """Анализирует расходы и кешбэк по каждой карте."""
+    cards = transactions.groupby('Номер карты').agg({
+        'Сумма операции': 'sum'
+    }).reset_index()
+    cards['last_digits'] = cards['Номер карты'].astype(str).str[-4:]
+    cards['cashback'] = cards['Сумма операции'] / 100.0
+    cards.rename(columns={'Сумма операции': 'total_spent'}, inplace=True)
+    return cards.to_dict(orient='records')

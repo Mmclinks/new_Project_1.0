@@ -1,15 +1,26 @@
 import pytest
-from src.reports import generate_report
+import pandas as pd
+from src.reports import spending_by_weekday
 
-def test_generate_report():
-    report = generate_report('2023-07-19 14:30:00', 'category')
-    assert not report.empty
 
-    report = generate_report('2023-07-19 14:30:00', 'day_of_week')
-    assert not report.empty
+def test_spending_by_weekday():
+    data = {
+        'Дата операции': ['2024-04-01', '2024-05-15', '2024-06-20', '2024-07-05'],
+        'Сумма операции': [200, 150, 300, 400]
+    }
+    df = pd.DataFrame(data)
 
-    report = generate_report('2023-07-19 14:30:00', 'working_day')
-    assert not report.empty
+    # Переопределяем текущую дату для теста
+    result = spending_by_weekday(df, '2024-07-01')
 
-    with pytest.raises(ValueError):
-        generate_report('2023-07-19 14:30:00', 'invalid_type')
+    # Ожидаемый результат
+    expected = pd.DataFrame({
+        'Weekday': ['Monday', 'Saturday', 'Tuesday'],
+        'Средние траты': [200.0, 400.0, 300.0]
+    }).sort_values(by='Weekday').reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(result.sort_values(by='Weekday').reset_index(drop=True), expected)
+
+
+if __name__ == '__main__':
+    pytest.main()

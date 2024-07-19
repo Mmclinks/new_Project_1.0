@@ -1,13 +1,16 @@
 import os
 from pathlib import Path
-
 from dotenv import load_dotenv
 
+# Загрузка переменных окружения из файла .env
 load_dotenv()
 
+# Определение базового пути проекта
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-EXCEL_FILE_PATH = BASE_DIR / "operations.xlsx"
-USER_SETTINGS_FILE_PATH = BASE_DIR / "user_settings.json"
-API_LAYER_ACCESS_KEY = os.getenv("API_LAYER_ACCESS_KEY")
-NASDAQ_API_KEY = os.getenv("NASDAQ_API_KEY")
+# Получение API ключа из переменных окружения
+ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+
+# Конфигурация API
+EXCHANGE_API_URL = 'https://v6.exchangerate-api.com/v6/{api_key}/latest/{base_currency}'
+EXCHANGE_API_KEY = os.getenv('EXCHANGE_API_KEY')

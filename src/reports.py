@@ -1,93 +1,143 @@
 import pandas as pd
-import json
+import datetime
 import logging
+from typing import Optional
+
+import pandas as pd
 from datetime import datetime
-from typing import Optional, Callable, Dict
-import functools
+from typing import Dict, List
+import requests
+from config import ALPHA_VANTAGE_API_KEY
+from pandas import read_excel
+from src.views import get_stock_prices
 
 # Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-def report_to_file(filename: Optional[str] = None):
-    """
-    Декоратор для записи результата функции в файл.
-    Если имя файла не задано, используется имя по умолчанию.
-    """
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            result = func(*args, **kwargs)
-            # Использование имени файла по умолчанию, если не задано
-            if filename is None:
-                filename = f"{func.__name__}_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            with open(filename, 'w') as file:
-                json.dump(result, file, indent=4)
-            logging.info(f"Report saved to {filename}")
-            return result
-        return wrapper
-    return decorator
+logging.basicConfig(level=logging.INFO)
 
 
-@report_to_file()
-def spending_by_category(transactions: pd.DataFrame, category: str, date: Optional[str] = None) -> pd.DataFrame:
-    """Возвращает траты по заданной категории за последние три месяца (от переданной даты)."""
-    if date is None:
-        date = datetime.now().strftime('%Y-%m-%d')
-
-    end_date = pd.Timestamp(date)
-    start_date = end_date - pd.DateOffset(months=3)
-
-    transactions['Дата операции'] = pd.to_datetime(transactions['Дата операции'], format='%d.%m.%Y %H:%M:%S')
-    filtered_data = transactions[
-        (transactions['Дата операции'] >= start_date) &
-        (transactions['Дата операции'] <= end_date) &
-        (transactions['Категория'] == category)
-        ]
-
-    total_spent = filtered_data['Сумма операции'].sum()
-    return {"Категория": category, "Траты за последние три месяца": total_spent}
-
-
-@report_to_file()
 def spending_by_weekday(transactions: pd.DataFrame, date: Optional[str] = None) -> pd.DataFrame:
-    """Возвращает средние траты в каждый из дней недели за последние три месяца (от переданной даты)."""
-    if date is None:
-        date = datetime.now().strftime('%Y-%m-%d')
+    """
+    Вычисляет средние траты по дням недели за последние три месяца от переданной даты.
 
-    end_date = pd.Timestamp(date)
-    start_date = end_date - pd.DateOffset(months=3)
+    :param transactions: Датафрейм с транзакциями.
+    :param date: Опциональная дата в формате 'YYYY-MM-DD'. Если не указана, используется текущая дата.
+    :return: Датафрейм с средними тратами по дням недели.
+    """
+    try:
+        # Если дата не указана, берем текущую
+        if date is None:
+            date = datetime.datetime.now().strftime('%Y-%m-%d')
 
-    transactions['Дата операции'] = pd.to_datetime(transactions['Дата операции'], format='%d.%m.%Y %H:%M:%S')
-    filtered_data = transactions[
-        (transactions['Дата операции'] >= start_date) &
-        (transactions['Дата операции'] <= end_date)
-        ]
+        # Преобразуем строку даты в объект datetime
+        end_date = datetime.datetime.strptime(date, '%Y-%m-%d')
+        start_date = end_date - pd.DateOffset(months=3)
 
-    filtered_data['День недели'] = filtered_data['Дата операции'].dt.day_name()
-    weekday_spending = filtered_data.groupby('День недели')['Сумма операции'].mean().to_dict()
+        # Преобразуем колонку с датами в формат datetime
+        transactions['Дата операции'] = pd.to_datetime(transactions['Дата операции'])
 
-    return {"Средние траты по дням недели": weekday_spending}
+        # Фильтруем данные за последние три месяца
+        filtered_transactions = transactions[(transactions['Дата операции'] >= start_date) &
+                                             (transactions['Дата операции'] <= end_date)]
+
+        # Добавляем колонку с днем недели
+        filtered_transactions['Weekday'] = filtered_transactions['Дата операции'].dt.day_name()
+
+        # Рассчитываем средние траты по дням недели
+        spending_by_weekday = (filtered_transactions.groupby('Weekday')['Сумма операции']
+                               .mean().reset_index())
+        spending_by_weekday = spending_by_weekday.rename(columns={'Сумма операции': 'Средние траты'})
+
+        # Логируем информацию о вычисленных данных
+        logging.info("Расчет средних трат по дням недели завершен успешно.")
+
+        return spending_by_weekday
+
+    except Exception as e:
+        logging.error(f"Ошибка в функции spending_by_weekday: {e}")
+        raise
 
 
-@report_to_file()
-def spending_by_workday(transactions: pd.DataFrame, date: Optional[str] = None) -> pd.DataFrame:
-    """Возвращает средние траты в рабочий и выходной день за последние три месяца (от переданной даты)."""
-    if date is None:
-        date = datetime.now().strftime('%Y-%m-%d')
+def create_excel_report(data: pd.DataFrame, output_file_path: str):
+    """
+    Создает Excel-отчет из DataFrame.
 
-    end_date = pd.Timestamp(date)
-    start_date = end_date - pd.DateOffset(months=3)
+    :param data: DataFrame с данными для отчета.
+    :param output_file_path: Путь к выходному Excel-файлу.
+    """
+    data.to_excel(output_file_path, index=False)
 
-    transactions['Дата операции'] = pd.to_datetime(transactions['Дата операции'], format='%d.%m.%Y %H:%M:%S')
-    filtered_data = transactions[
-        (transactions['Дата операции'] >= start_date) &
-        (transactions['Дата операции'] <= end_date)
-        ]
 
-    filtered_data['Рабочий день'] = filtered_data['Дата операции'].dt.weekday < 5
-    workday_spending = filtered_data.groupby('Рабочий день')['Сумма операции'].mean().to_dict()
 
-    return {
-        "Средние траты в рабочие дни": workday_spending.get(True, 0),
-        "Средние траты в выходные дни": workday_spending.get(False, 0)
-    }
+    def get_stock_prices(symbol: str) -> Dict[str, any]:
+        """
+        Получает цены акций из Alpha Vantage API.
+
+        :param symbol: Символ акции.
+        :return: Данные о ценах акций.
+        """
+        STOCK_API_URL = f'https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={symbol}&interval=1min&apikey={ALPHA_VANTAGE_API_KEY}'
+        response = requests.get(STOCK_API_URL)
+        return response.json()
+
+    def generate_json_response(file_path: str, date_time: str) -> Dict[str, any]:
+        """
+        Генерирует JSON-ответ на основе данных из Excel-файла и текущего времени.
+
+        :param file_path: Путь к Excel-файлу.
+        :param date_time: Дата и время в формате 'YYYY-MM-DD HH:MM:SS'.
+        :return: JSON-ответ с данными о расходах, валютных курсах и ценах акций.
+        """
+        # Загрузка данных из Excel
+        df = read_excel(file_path)
+
+        # Приветствие
+        now = datetime.now()
+        hour = now.hour
+        if 5 <= hour < 12:
+            greeting = "Доброе утро"
+        elif 12 <= hour < 18:
+            greeting = "Добрый день"
+        elif 18 <= hour < 23:
+            greeting = "Добрый вечер"
+        else:
+            greeting = "Доброй ночи"
+
+        # Получение данных о ценах акций
+        symbols = ["AAPL", "AMZN", "GOOGL", "MSFT", "TSLA"]
+        stock_prices = []
+        for symbol in symbols:
+            data = get_stock_prices(symbol)
+            latest_price = data.get('Time Series (1min)', {}).popitem()[1].get('1. open', 'N/A')
+            stock_prices.append({
+                "stock": symbol,
+                "price": float(latest_price)
+            })
+
+        # Пример данных для JSON-ответа (заполните данные в соответствии с вашей логикой)
+        response_json = {
+            "greeting": greeting,
+            "cards": [
+                {
+                    "last_digits": "5814",
+                    "total_spent": 1262.00,
+                    "cashback": 12.62
+                }
+            ],
+            "top_transactions": [
+                {
+                    "date": "21.12.2021",
+                    "amount": 1198.23,
+                    "category": "Переводы",
+                    "description": "Перевод Кредитная карта. ТП 10.2 RUR"
+                }
+            ],
+            "currency_rates": [
+                {
+                    "currency": "USD",
+                    "rate": 73.21
+                }
+            ],
+            "stock_prices": stock_prices
+        }
+
+        return response_json
