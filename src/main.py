@@ -1,87 +1,49 @@
-# main.py
-
-import os
 import pandas as pd
-from datetime import datetime
-from config import EXCEL_FILE_PATH, USER_SETTINGS_FILE_PATH
-from utils import (
-    read_excel_data,
-    get_currency_rates,
-    get_stock_prices,
-    calculate_cashback,
-    get_greeting,
+from flask import Flask, request, jsonify
+from src.services import (
+    analyze_cashback_categories,
+    investment_bank,
+    simple_search,
     search_phone_numbers,
-    read_transactions_from_xlsx
+    search_personal_transfers,
+    load_data
 )
 
-def test_read_excel_data():
-    # Пример использования функции read_excel_data
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    df = read_excel_data(EXCEL_FILE_PATH, end_date)
-    print("Данные из Excel:")
-    print(df.head())
+app = Flask(__name__)
 
-def test_get_currency_rates():
-    # Пример использования функции get_currency_rates
-    currencies = ['USD', 'EUR', 'GBP']
-    rates = get_currency_rates(currencies)
-    print("Курсы валют:")
-    print(rates)
+data_file_path = 'data/operations.xlsx'
+data = load_data(data_file_path)
 
-def test_get_stock_prices():
-    # Пример использования функции get_stock_prices
-    stocks = ['AAPL', 'GOOGL', 'MSFT']
-    prices = get_stock_prices(stocks)
-    print("Цены на акции:")
-    print(prices)
+@app.route('/cashback_analysis', methods=['GET'])
+def cashback_analysis():
+    year = int(request.args.get('year'))
+    month = int(request.args.get('month'))
+    result = analyze_cashback_categories(data, year, month)
+    return jsonify(result)
 
-def test_calculate_cashback():
-    # Пример использования функции calculate_cashback
-    total_spent = 1000.0
-    cashback = calculate_cashback(total_spent)
-    print(f"Кэшбэк за ${total_spent}: ${cashback}")
+@app.route('/investment_bank', methods=['GET'])
+def invest_bank():
+    month = request.args.get('month')
+    limit = int(request.args.get('limit'))
+    transactions = data.to_dict(orient='records')
+    result = investment_bank(month, transactions, limit)
+    return jsonify({"total_investment": result})
 
-def test_get_greeting():
-    # Пример использования функции get_greeting
-    now = datetime.now()
-    greeting = get_greeting(now)
-    print(f"Приветствие для {now}: {greeting}")
+@app.route('/search', methods=['GET'])
+def search():
+    query = request.args.get('query')
+    result = simple_search(data, query)
+    return jsonify(result)
 
-def test_search_phone_numbers():
-    # Пример использования функции search_phone_numbers
-    transactions = [
-        {'description': 'Оплата услуг по номеру 123-456-7890'},
-        {'description': 'Снятие наличных в банкомате'},
-        {'description': 'Оплата Джону Доу'}
-    ]
-    transactions_with_phones = search_phone_numbers(transactions)
-    print("Транзакции с номерами телефонов:")
-    print(transactions_with_phones)
+@app.route('/search_phone_numbers', methods=['GET'])
+def phone_numbers():
+    result = search_phone_numbers(data)
+    return jsonify(result)
 
-def test_read_transactions_from_xlsx():
-    # Пример использования функции read_transactions_from_xlsx
-    transactions = read_transactions_from_xlsx(USER_SETTINGS_FILE_PATH)
-    print("Транзакции из XLSX:")
-    print(transactions)
+@app.route('/search_personal_transfers', methods=['GET'])
+def personal_transfers():
+    result = search_personal_transfers(data)
+    return jsonify(result)
 
-if __name__ == "__main__":
-    test_read_excel_data()
-    print()
-
-    test_get_currency_rates()
-    print()
-
-    test_get_stock_prices()
-    print()
-
-    test_calculate_cashback()
-    print()
-
-    test_get_greeting()
-    print()
-
-    test_search_phone_numbers()
-    print()
-
-    test_read_transactions_from_xlsx()
-    print()
+if __name__ == '__main__':
+    app.run(host="0.0.0.0", port=5000, debug=True)

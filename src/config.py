@@ -1,9 +1,13 @@
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-EXCEL_FILE_PATH = os.getenv("EXCEL_FILE_PATH")
-USER_SETTINGS_FILE_PATH = os.getenv("USER_SETTINGS_FILE_PATH")
-CURRENCY_API_URL = os.getenv("CURRENCY_API_URL")
-STOCK_API_URL = os.getenv("STOCK_API_URL")
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+EXCEL_FILE_PATH = BASE_DIR / "operations.xlsx"
+USER_SETTINGS_FILE_PATH = BASE_DIR / "user_settings.json"
+API_LAYER_ACCESS_KEY = os.getenv("API_LAYER_ACCESS_KEY")
+NASDAQ_API_KEY = os.getenv("NASDAQ_API_KEY")
