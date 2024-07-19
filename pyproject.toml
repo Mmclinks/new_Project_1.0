@@ -11,6 +11,9 @@ pandas = "^2.2.2"
 requests = "^2.32.3"
 python-dotenv = "^1.0.1"
 openpyxl = "^3.1.5"
+mport = "^0.1.1"
+logging = "^0.4.9.6"
+flask = "^3.0.3"
 
 
 [tool.poetry.group.lint.dependencies]
@@ -21,6 +24,7 @@ isort = "^5.13.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest-cov = "^5.0.0"
+flake8 = "^7.1.0"
 
 [build-system]
 requires = ["poetry-core"]
