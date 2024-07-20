@@ -1,101 +1,142 @@
 import json
 import logging
-from typing import Dict, List, Any
+import os
+from datetime import datetime
+from typing import Dict, List, Union
+
 import pandas as pd
 import requests
-from typing import List, Dict
-from datetime import datetime
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+from dotenv import load_dotenv
+from flask import Blueprint, jsonify, request
 
-# Константы
-USER_SETTINGS_FILE = 'user_settings.json'
-CURRENCY_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD'
-STOCK_API_URL = 'https://api.example.com/stock_prices'  # Подставьте реальный URL
+from src.utils import calculate_cashback, get_greeting, read_transactions_from_excel
 
+# Загрузка переменных окружения из .env файла
+load_dotenv()
 
-def get_greeting(current_time: datetime) -> str:
-    """Возвращает приветствие на основе текущего времени."""
-    if 5 <= current_time.hour < 12:
-        return "Доброе утро"
-    elif 12 <= current_time.hour < 18:
-        return "Добрый день"
-    elif 18 <= current_time.hour < 23:
-        return "Добрый вечер"
-    else:
-        return "Доброй ночи"
+# Создание объекта Blueprint для маршрутов
+views = Blueprint("views", __name__)
 
 
-
-def load_user_settings() -> Dict[str, Any]:
-    """Загружает пользовательские настройки из JSON-файла."""
-    with open(USER_SETTINGS_FILE, 'r') as file:
-        return json.load(file)
-
-
-def get_currency_rates(api_url: str, currencies: List[str]) -> List[Dict[str, float]]:
+@views.route("/main", methods=["GET"])
+def main_page_analysis():
     """
-    Получает курсы валют из API.
+    Обрабатывает GET-запрос на основной маршрут '/main' и возвращает анализ данных на основе переданной даты.
 
-    :param api_url: URL для получения курсов валют
-    :param currencies: Список валют, для которых нужно получить курсы
-    :return: Список словарей с курсами валют
+    Параметры запроса:
+    - date (str): Дата в формате "YYYY-MM-DD HH:MM:SS", по которой производится анализ.
+
+    Возвращает:
+    - JSON: Объект с результатами анализа, включающий приветствие, информацию о картах, топ-5 транзакций,
+      курсы валют и цены акций.
+    - 400 Bad Request: Если параметр даты отсутствует или имеет неверный формат.
+    - 500 Internal Server Error: Если возникла ошибка при чтении данных транзакций.
     """
-    response = requests.get(api_url)
-    data = response.json()
+    date_str = request.args.get("date")
+    if not date_str:
+        return jsonify({"error": "Параметр даты отсутствует"}), 400
 
-    rates = [
-        {"currency": currency, "rate": data["rates"].get(currency, None)}
-        for currency in currencies
-    ]
-
-    return rates
-
-
-
-
-
-
-
-import requests
-from requests.exceptions import ConnectionError, RequestException
-
-def get_stock_prices(api_url, stocks):
     try:
-        response = requests.get(api_url, params={'symbol': stocks})
-        response.raise_for_status()  # Вызовет ошибку для некорректных ответов
-        return response.json()  # Предполагается, что ответ в формате JSON
-    except ConnectionError as ce:
-        print(f"Ошибка подключения к {api_url}: {ce}")
-    except RequestException as re:
-        print(f"Ошибка запроса: {re}")
+        current_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return jsonify({"error": "Неверный формат даты"}), 400
+
+    greeting = get_greeting(current_date)
+
+    start_date = current_date.replace(day=1)
+    end_date = current_date
+
+    df = read_transactions_from_excel("data/operations.xlsx")
+    if df is None:
+        return jsonify({"error": "Не удалось прочитать данные транзакций"}), 500
+
+    df["Дата операции"] = pd.to_datetime(df["Дата операции"])
+    df_filtered = df[(df["Дата операции"] >= start_date) & (df["Дата операции"] <= end_date)]
+
+    cards_info = []
+    for last_digits, group in df_filtered.groupby("Номер карты"):
+        total_spent = group["Сумма операции"].sum()
+        cashback = calculate_cashback(total_spent)
+        cards_info.append(
+            {
+                "last_digits": str(last_digits)[-4:],  # Последние 4 цифры номера карты
+                "total_spent": total_spent,  # Общая сумма расходов
+                "cashback": cashback,  # Рассчитанный кэшбэк
+            }
+        )
+
+    top_transactions = df_filtered.nlargest(5, "Сумма операции")[
+        ["Дата операции", "Сумма операции", "Категория", "Описание"]
+    ].to_dict(orient="records")
+
+    try:
+        api_key = os.getenv("API_KEY")
+        currency_rates = get_currency_rates(api_key)
     except Exception as e:
-        print(f"Непредвиденная ошибка: {e}")
+        logging.error(f"Ошибка при получении курсов валют: {e}")
+        currency_rates = []
 
-    return None  # Или обработать адекватно в вашем приложении
+    try:
+        stock_prices = get_stock_prices()
+    except Exception as e:
+        logging.error(f"Ошибка при получении цен акций: {e}")
+        stock_prices = []
 
-# Пример использования
-api_url = 'https://www.alphavantage.co/query'
-stocks = 'AAPL'  # Пример символа акции
-data = get_stock_prices(api_url, stocks)
-if data:
-    print(data)
-else:
-    print("Не удалось получить цены на акции.")
+    result = {
+        "greeting": greeting,
+        "cards": cards_info,
+        "top_transactions": top_transactions,
+        "currency_rates": currency_rates,
+        "stock_prices": stock_prices,
+    }
+
+    return jsonify(result)
 
 
-def get_top_transactions(transactions: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Возвращает топ-5 транзакций по сумме платежа."""
-    top_transactions = transactions.nlargest(5, 'Сумма операции')
-    return top_transactions.to_dict(orient='records')
+def get_currency_rates(api_key: str) -> str:
+    """
+    Получает курсы валют по отношению к рублю с использованием заданного API ключа.
+
+    Параметры:
+    - api_key (str): API ключ для доступа к сервису курсов валют.
+
+    Возвращает:
+    - str: Список словарей с валютами и их курсами по отношению к рублю в формате JSON.
+    """
+    url = f"https://api.exchangerate-api.com/v4/latest/RUB?apikey={api_key}"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Проверка успешности запроса
+        data = response.json()
+    except requests.RequestException as e:
+        logging.error(f"Error fetching currency rates: {e}")
+        return json.dumps({"error": "Failed to fetch currency rates"}, ensure_ascii=False)
+
+    try:
+        with open("src/user_settings.json", "r") as file:
+            user_settings = json.load(file)
+        user_currencies = user_settings.get("user_currencies", [])
+        rates = [{"currency": cur, "rate": data["rates"].get(cur, "N/A")} for cur in user_currencies]
+        return json.dumps(rates, ensure_ascii=False)
+    except Exception as e:
+        logging.error(f"Error processing user settings: {e}")
+        return json.dumps({"error": "Failed to process user settings"}, ensure_ascii=False)
 
 
-def analyze_expenses(transactions: pd.DataFrame) -> Dict[str, Any]:
-    """Анализирует расходы и кешбэк по каждой карте."""
-    cards = transactions.groupby('Номер карты').agg({
-        'Сумма операции': 'sum'
-    }).reset_index()
-    cards['last_digits'] = cards['Номер карты'].astype(str).str[-4:]
-    cards['cashback'] = cards['Сумма операции'] / 100.0
-    cards.rename(columns={'Сумма операции': 'total_spent'}, inplace=True)
-    return cards.to_dict(orient='records')
+def get_stock_prices() -> List[Dict[str, Union[str, float]]]:
+    """
+    Получает текущие цены акций по символам из файла настроек пользователя.
+
+    Возвращает:
+    - list: Список словарей с символами акций и их текущими ценами.
+    """
+    with open("src/user_settings.json", "r") as file:
+        user_settings = json.load(file)
+    user_stocks = user_settings.get("user_stocks", [])
+    prices = []
+    api_key = os.getenv("API_KEY")  # Использование переменной окружения для API ключа
+    for stock in user_stocks:
+        response = requests.get(f"https://finnhub.io/api/v1/quote?symbol={stock}&token={api_key}")
+        data = response.json()
+        prices.append({"stock": stock, "price": data["c"]})
+    return prices
