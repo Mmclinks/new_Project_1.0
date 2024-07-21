@@ -1,42 +1,34 @@
-import pandas as pd
 import json
-import re
 import logging
-from typing import List, Dict
-import requests
-from typing import Dict
-from config import EXCHANGE_API_URL, EXCHANGE_API_KEY
-
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+import re
+from typing import Any, Dict, List
 
 
-def find_phone_numbers(transactions: pd.DataFrame) -> str:
+def search_by_phone(transactions: List[Dict[str, Any]], phone_number: str) -> str:
     """
-    Находит все транзакции, содержащие в описании мобильные номера.
+    Ищет транзакции по номеру телефона в списке транзакций.
 
-    :param transactions: Датафрейм с транзакциями.
-    :return: JSON-строка с транзакциями, содержащими мобильные номера.
+    Параметры:
+    transactions (List[Dict[str, Any]]): Список словарей, представляющих транзакции.
+    Каждый словарь должен содержать ключ 'Описание',
+                                         в котором может находиться информация о номере телефона.
+    phone_number (str): Номер телефона или регулярное выражение для поиска в поле 'Описание' транзакций.
+
+    Возвращает:
+    str: JSON строка, содержащая список транзакций, в которых найдено совпадение с номером телефона.
+     Если возникла ошибка,
+         возвращается JSON строка с сообщением об ошибке.
     """
     try:
-        # Регулярное выражение для поиска мобильных номеров
-        phone_pattern = re.compile(r'\+7\s?\d{3}\s?\d{3}-?\d{2}-?\d{2}')
+        # Создание регулярного выражения для поиска номера телефона
+        phone_pattern = re.compile(phone_number)
 
-        # Функция для проверки наличия номера в описании
-        contains_phone_number = lambda description: bool(phone_pattern.search(description))
+        # Поиск транзакций, содержащих совпадение с номером телефона
+        matching_transactions = [txn for txn in transactions if phone_pattern.search(txn.get("Описание", ""))]
 
-        # Фильтруем транзакции, оставляем только те, у которых описание содержит номер
-        filtered_transactions = transactions[transactions['Описание'].apply(contains_phone_number)]
-
-        # Преобразуем в JSON
-        result = filtered_transactions.to_dict(orient='records')
-        json_result = json.dumps(result, ensure_ascii=False, indent=4)
-
-        # Логируем информацию о выполнении
-        logging.info("Поиск телефонных номеров завершен успешно.")
-
-        return json_result
-
+        # Преобразование результата в JSON строку
+        return json.dumps(matching_transactions, ensure_ascii=False)
     except Exception as e:
-        logging.error(f"Ошибка в функции find_phone_numbers: {e}")
-        raise
+        # Логирование ошибки и возврат сообщения об ошибке
+        logging.error(f"Ошибка поиска по номеру телефона: {e}")
+        return json.dumps({"error": "Не удалось выполнить поиск транзакций"})
